@@ -28,6 +28,10 @@ import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
+import org.berndpruenster.netlayer.tor.HsContainer;
+import org.berndpruenster.netlayer.tor.Tor;
+import org.berndpruenster.netlayer.tor.TorCtlException;
+
 import javax.inject.Inject;
 
 import java.net.InetSocketAddress;
@@ -42,6 +46,7 @@ import lombok.extern.slf4j.Slf4j;
 
 
 
+import kotlin.Unit;
 import org.eclipse.jetty.http.MimeTypes;
 import org.eclipse.jetty.server.Handler;
 import org.eclipse.jetty.server.Request;
@@ -64,7 +69,9 @@ public class HttpApiServer {
     private final ApiPasswordManager apiPasswordManager;
 
     @Inject
-    public HttpApiServer(ApiPasswordManager apiPasswordManager, BisqEnvironment bisqEnvironment, HttpApiInterfaceV1 httpApiInterfaceV1) {
+    public HttpApiServer(ApiPasswordManager apiPasswordManager,
+                         BisqEnvironment bisqEnvironment,
+                         HttpApiInterfaceV1 httpApiInterfaceV1) {
         this.apiPasswordManager = apiPasswordManager;
         this.bisqEnvironment = bisqEnvironment;
         this.httpApiInterfaceV1 = httpApiInterfaceV1;
@@ -81,7 +88,8 @@ public class HttpApiServer {
             server.setRequestLog(new Slf4jRequestLog());
             server.start();
             log.info("HTTP API started on {}", socketAddress);
-        } catch (Exception e) {
+            publishTorHiddenServiceIfTorAvailable();
+        } catch (Exception | TorCtlException e) {
             throw new RuntimeException(e);
         }
     }
@@ -115,7 +123,10 @@ public class HttpApiServer {
         contextHandler.setContextPath("/");
         contextHandler.setHandler(new AbstractHandler() {
             @Override
-            public void handle(String target, Request baseRequest, HttpServletRequest request, HttpServletResponse response) throws IOException, ServletException {
+            public void handle(String target,
+                               Request baseRequest,
+                               HttpServletRequest request,
+                               HttpServletResponse response) throws IOException, ServletException {
                 if (!"/openapi.json".equals(target)) {
                     return;
                 }
@@ -131,5 +142,23 @@ public class HttpApiServer {
     private void setupAuth(ServletContextHandler appContextHandler) {
         AuthFilter authFilter = new AuthFilter(apiPasswordManager);
         appContextHandler.addFilter(new FilterHolder(authFilter), "/*", EnumSet.allOf(DispatcherType.class));
+    }
+
+    /**
+     * If Bisq is configured to use Tor then the default Tor instance should be available
+     * by the time this method is executed.
+     */
+    private void publishTorHiddenServiceIfTorAvailable() throws IOException, TorCtlException {
+        Tor tor = Tor.getDefault();
+        if (null == tor) {
+            log.info("Tor not started so API will be available only locally");
+            return;
+        }
+        final HsContainer hsContainer = tor.publishHiddenService("api", 80, bisqEnvironment.getHttpApiPort());
+        hsContainer.getHandler().attachHSReadyListener(hsContainer.getHostname(), () ->
+        {
+            log.info("HTTP API available over Tor at: http://{}/docs", hsContainer.getHostname());
+            return Unit.INSTANCE;
+        });
     }
 }

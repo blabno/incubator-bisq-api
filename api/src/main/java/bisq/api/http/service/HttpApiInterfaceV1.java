@@ -17,6 +17,7 @@
 
 package bisq.api.http.service;
 
+import bisq.api.http.service.endpoint.OfferEndpoint;
 import bisq.api.http.service.endpoint.UserEndpoint;
 import bisq.api.http.service.endpoint.VersionEndpoint;
 
@@ -41,19 +42,29 @@ import javax.ws.rs.Path;
         info = @Info(version = "0.0.1", title = "Bisq HTTP API"),
         security = @SecurityRequirement(name = "authorization"),
         tags = {
+                @Tag(name = "offers"),
                 @Tag(name = "user"),
                 @Tag(name = "version")
         }
 )
 @Path("/api/v1")
 public class HttpApiInterfaceV1 {
+    private final OfferEndpoint offerEndpoint;
     private final UserEndpoint userEndpoint;
     private final VersionEndpoint versionEndpoint;
 
     @Inject
-    public HttpApiInterfaceV1(UserEndpoint userEndpoint, VersionEndpoint versionEndpoint) {
+    public HttpApiInterfaceV1(OfferEndpoint offerEndpoint,
+                              UserEndpoint userEndpoint,
+                              VersionEndpoint versionEndpoint) {
+        this.offerEndpoint = offerEndpoint;
         this.userEndpoint = userEndpoint;
         this.versionEndpoint = versionEndpoint;
+    }
+
+    @Path("offers")
+    public OfferEndpoint getOfferEndpoint() {
+        return offerEndpoint;
     }
 
     @Path("user")
